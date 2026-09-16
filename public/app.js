@@ -128,6 +128,79 @@ function isConsecutiveAvailable(daysList, startIndex, nights, minSeats) {
   return true;
 }
 
+// Helper: Format consecutive stay details
+function formatRowDetails(d, allDays, idx, nights, monthName, buddhistYear) {
+  if (nights <= 1 || !d.isAvailable) {
+    let badge = `<span class="badge badge-green">ว่าง</span>`;
+    let numDisplay = `<span class="num-available">ว่าง ${d.available} ที่</span>`;
+
+    if (d.isFull) {
+      badge = `<span class="badge badge-red">เต็มแล้ว</span>`;
+      numDisplay = `<span class="num-full">0 ที่ (เต็ม)</span>`;
+    } else if (d.status === 'warning') {
+      badge = `<span class="badge badge-yellow">ใกล้เต็ม</span>`;
+      numDisplay = `<span class="num-available" style="color: #d97706;">ว่าง ${d.available} ที่</span>`;
+    }
+
+    return {
+      badge,
+      dateHtml: `<b>${d.thaiDate}</b>`,
+      dayHtml: `วัน${d.dayName} ${d.isWeekend ? '(ส.-อา.)' : ''}`,
+      numHtml: numDisplay,
+      bookedHtml: `จองแล้ว <b>${d.booked}</b> / ${d.capacity} คน`
+    };
+  }
+
+  // Consecutive nights formatting
+  const stayDays = allDays.slice(idx, idx + nights);
+  const minAvailable = Math.min(...stayDays.map(s => s.available));
+  const checkoutDayObj = allDays[idx + nights];
+  const checkoutDayNum = checkoutDayObj ? checkoutDayObj.day : (d.day + nights);
+  const checkoutDayName = checkoutDayObj ? `วัน${checkoutDayObj.dayName}` : '';
+  const mName = monthName || 'ต.ค.';
+
+  const badge = `<span class="badge badge-green">ว่าง ${nights} คืน ✓</span>`;
+
+  const dateHtml = `
+    <div style="font-size: 0.92rem; font-weight: 700; color: #0f172a; white-space: nowrap;">
+      เข้า ${d.day} ➔ ออก ${checkoutDayNum} ${mName}
+    </div>
+    <div style="font-size: 0.75rem; color: #0284c7; font-weight: 600; margin-top: 2px;">
+      (พัก ${nights} คืน)
+    </div>
+  `;
+
+  const dayHtml = `
+    <div style="font-weight: 600; color: #1e293b;">วัน${d.dayName}</div>
+    <div style="font-size: 0.72rem; color: #64748b;">ถึง ${checkoutDayName}</div>
+  `;
+
+  const breakdownLines = stayDays.map((st, i) => 
+    `<div style="font-size: 0.75rem; color: #334155; line-height: 1.35;">• <b>คืน ${i + 1} (${st.day} ${mName}):</b> ว่าง <span style="color: #059669; font-weight: 700;">${st.available}</span> ที่</div>`
+  ).join('');
+
+  const numHtml = `
+    <div class="num-available" style="font-size: 0.92rem;">ว่างขั้นต่ำ <b>${minAvailable}</b> ที่</div>
+    <div style="margin-top: 4px; padding: 4px 6px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; text-align: left;">
+      ${breakdownLines}
+    </div>
+  `;
+
+  const bookedHtml = `
+    <div style="font-size: 0.75rem; color: #475569; text-align: left;">
+      ${stayDays.map((st, i) => `<div>• คืน ${i+1}: ${st.booked}/${st.capacity}</div>`).join('')}
+    </div>
+  `;
+
+  return {
+    badge,
+    dateHtml,
+    dayHtml,
+    numHtml,
+    bookedHtml
+  };
+}
+
 // Main Render Logic
 function render() {
   if (!rawData) return;
@@ -143,6 +216,19 @@ function render() {
     if (r.checked) filterMode = r.value;
   }
   const weekendOnly = checkWeekendOnly.checked;
+
+  // Dynamically update table headers when nights > 1
+  const thDate = document.querySelector('#tableHead th:nth-child(2)');
+  const thSeats = document.querySelector('#tableHead th:nth-child(5)');
+  if (thDate && thSeats) {
+    if (nights > 1) {
+      thDate.innerHTML = `ช่วงวันพัก (${nights} คืน)<br><span style="font-size: 0.72rem; font-weight: normal; color: #475569;">เข้า ➔ ออก</span>`;
+      thSeats.innerHTML = `ที่ว่างต่อเนื่อง<br><span style="font-size: 0.72rem; font-weight: normal; color: #475569;">(ต่ำสุด / รายคืน)</span>`;
+    } else {
+      thDate.textContent = 'วันที่';
+      thSeats.textContent = 'จำนวนที่ว่าง';
+    }
+  }
 
   if (isMulti) {
     renderMultiParks(rawData.parks, { filterMode, weekendOnly, minSeats, nights, fromDay, toDay });
@@ -167,24 +253,25 @@ function renderSinglePark(data, filters) {
   const allDays = zone.days;
 
   // Filter days
-  const filtered = allDays.filter((d, idx) => {
+  const filtered = [];
+  allDays.forEach((d, idx) => {
     // Date range filter
-    if (fromDay !== null && d.day < fromDay) return false;
-    if (toDay !== null && d.day > toDay) return false;
+    if (fromDay !== null && d.day < fromDay) return;
+    if (toDay !== null && d.day > toDay) return;
 
     // Weekend filter
-    if (weekendOnly && !d.isWeekend) return false;
+    if (weekendOnly && !d.isWeekend) return;
 
     // Min seats & available mode
     if (filterMode === 'available') {
-      if (!d.isAvailable || d.available < minSeats) return false;
+      if (!d.isAvailable || d.available < minSeats) return;
       // Consecutive nights check
       if (nights > 1 && !isConsecutiveAvailable(allDays, idx, nights, minSeats)) {
-        return false;
+        return;
       }
     }
 
-    return true;
+    filtered.push({ day: d, idx });
   });
 
   countAll.textContent = allDays.length;
@@ -213,34 +300,19 @@ function renderSinglePark(data, filters) {
   if (filtered.length === 0) {
     tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 30px; color: #666;">ไม่พบวันที่ตรงตามเงื่อนไข (ลองเปลี่ยนช่วงวัน หรือลดจำนวนคืนที่พัก)</td></tr>`;
   } else {
-    tableBody.innerHTML = filtered.map(d => {
+    tableBody.innerHTML = filtered.map(({ day: d, idx }) => {
       const rowClass = d.isFull ? 'row-full' : 'row-available';
       const weekendClass = d.isWeekend ? 'row-weekend' : '';
-      
-      let badge = `<span class="badge badge-green">ว่าง</span>`;
-      let numDisplay = `<span class="num-available">ว่าง ${d.available} ที่</span>`;
-
-      if (d.isFull) {
-        badge = `<span class="badge badge-red">เต็มแล้ว</span>`;
-        numDisplay = `<span class="num-full">0 ที่ (เต็ม)</span>`;
-      } else if (d.status === 'warning') {
-        badge = `<span class="badge badge-yellow">ใกล้เต็ม</span>`;
-        numDisplay = `<span class="num-available" style="color: #d97706;">ว่าง ${d.available} ที่</span>`;
-      }
-
-      let consecutiveTag = '';
-      if (nights > 1 && d.isAvailable) {
-        consecutiveTag = `<div style="font-size: 0.75rem; color: #059669;">(ว่างต่อเนื่อง ${nights} คืน ✓)</div>`;
-      }
+      const formatted = formatRowDetails(d, allDays, idx, nights, data.monthName, data.buddhistYear);
 
       return `
         <tr class="${rowClass} ${weekendClass}">
           <td><b>${parkName}</b></td>
-          <td><b>${d.thaiDate}</b></td>
-          <td class="col-day">วัน${d.dayName} ${d.isWeekend ? '(ส.-อา.)' : ''}</td>
-          <td>${badge}</td>
-          <td>${numDisplay}${consecutiveTag}</td>
-          <td>จองแล้ว <b>${d.booked}</b> / ${d.capacity} คน</td>
+          <td>${formatted.dateHtml}</td>
+          <td class="col-day">${formatted.dayHtml}</td>
+          <td>${formatted.badge}</td>
+          <td>${formatted.numHtml}</td>
+          <td>${formatted.bookedHtml}</td>
           <td>${zone.zoneName}</td>
           <td>
             ${d.isFull 
@@ -315,31 +387,16 @@ function renderMultiParks(parks, filters) {
     const d = r.day;
     const rowClass = d.isFull ? 'row-full' : 'row-available';
     const weekendClass = d.isWeekend ? 'row-weekend' : '';
-
-    let badge = `<span class="badge badge-green">ว่าง</span>`;
-    let numDisplay = `<span class="num-available">ว่าง ${d.available} ที่</span>`;
-
-    if (d.isFull) {
-      badge = `<span class="badge badge-red">เต็มแล้ว</span>`;
-      numDisplay = `<span class="num-full">0 ที่ (เต็ม)</span>`;
-    } else if (d.status === 'warning') {
-      badge = `<span class="badge badge-yellow">ใกล้เต็ม</span>`;
-      numDisplay = `<span class="num-available" style="color: #d97706;">ว่าง ${d.available} ที่</span>`;
-    }
-
-    let consecutiveTag = '';
-    if (nights > 1 && d.isAvailable) {
-      consecutiveTag = `<div style="font-size: 0.75rem; color: #059669;">(ว่างต่อเนื่อง ${nights} คืน ✓)</div>`;
-    }
+    const formatted = formatRowDetails(d, r.allDays, r.idx, nights, (rawData && rawData.monthName) || 'ต.ค.', (rawData && rawData.buddhistYear) || '2569');
 
     return `
       <tr class="${rowClass} ${weekendClass}">
         <td><b style="color: #005c9c;">${r.parkName}</b></td>
-        <td><b>${d.thaiDate}</b></td>
-        <td class="col-day">วัน${d.dayName} ${d.isWeekend ? '(ส.-อา.)' : ''}</td>
-        <td>${badge}</td>
-        <td>${numDisplay}${consecutiveTag}</td>
-        <td>จองแล้ว <b>${d.booked}</b> / ${d.capacity} คน</td>
+        <td>${formatted.dateHtml}</td>
+        <td class="col-day">${formatted.dayHtml}</td>
+        <td>${formatted.badge}</td>
+        <td>${formatted.numHtml}</td>
+        <td>${formatted.bookedHtml}</td>
         <td>${r.zoneName}</td>
         <td>
           ${d.isFull 
