@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  dnp-tracker:
+    build: .
+    container_name: dnp-camping-tracker
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - NODE_ENV=production
