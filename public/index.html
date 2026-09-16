@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ตรวจสอบวันว่างพื้นที่กางเต็นท์ (DNP)</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h2>ตรวจสอบวันว่างพื้นที่กางเต็นท์ (กรมอุทยานฯ DNP)</h2>
+      <div class="sync-status">
+        <span>อัปเดตอัตโนมัติทุก 1 นาที | อัปเดตล่าสุด: <b id="lastUpdateTime">-</b></span>
+        <span>(รอบถัดไปในอีก <b id="countdownSec">60</b> วินาที)</span>
+        <button id="btnRefresh" class="btn btn-sm">รีเฟรชทันที</button>
+      </div>
+    </div>
+
+    <!-- Filter & Options Bar -->
+    <div class="control-box">
+      <div class="form-row">
+        <div class="form-item">
+          <label>อุทยานแห่งชาติ:</label>
+          <select id="parkSelect" class="input-select">
+            <option value="84" selected>อช.ภูสอยดาว</option>
+          </select>
+        </div>
+
+        <div class="form-item">
+          <label>เดือน:</label>
+          <select id="monthSelect" class="input-select">
+            <option value="01">มกราคม</option>
+            <option value="02">กุมภาพันธ์</option>
+            <option value="03">มีนาคม</option>
+            <option value="04">เมษายน</option>
+            <option value="05">พฤษภาคม</option>
+            <option value="06">มิถุนายน</option>
+            <option value="07">กรกฎาคม</option>
+            <option value="08">สิงหาคม</option>
+            <option value="09">กันยายน</option>
+            <option value="10" selected>ตุลาคม</option>
+            <option value="11">พฤศจิกายน</option>
+            <option value="12">ธันวาคม</option>
+          </select>
+        </div>
+
+        <div class="form-item">
+          <label>ปี พ.ศ.:</label>
+          <select id="yearSelect" class="input-select">
+            <option value="2025">2568</option>
+            <option value="2026" selected>2569</option>
+            <option value="2027">2570</option>
+          </select>
+        </div>
+
+        <div class="form-item">
+          <label>&nbsp;</label>
+          <button id="btnSearch" class="btn btn-primary">ค้นหา</button>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Simple Filter Row -->
+      <div class="filter-row">
+        <label class="filter-label"><b>การแสดงผล:</b></label>
+        
+        <label class="radio-item">
+          <input type="radio" name="filterMode" value="available" checked>
+          <span><b>แสดงเฉพาะวันที่มีที่ว่าง</b> (<span id="countAvailable">0</span> วัน)</span>
+        </label>
+
+        <label class="radio-item">
+          <input type="radio" name="filterMode" value="all">
+          <span>แสดงทุกวัน (<span id="countAll">0</span> วัน)</span>
+        </label>
+
+        <label class="checkbox-item">
+          <input type="checkbox" id="checkWeekendOnly">
+          <span>เฉพาะวันเสาร์-อาทิตย์</span>
+        </label>
+
+        <div class="min-seats-item">
+          <span>ว่างอย่างน้อย:</span>
+          <input type="number" id="inputMinSeats" value="1" min="1" max="500">
+          <span>ที่</span>
+        </div>
+
+        <a href="https://nps.dnp.go.th/reservation.php" target="_blank" class="link-dnp">ไปยังเว็บจอง DNP ↗</a>
+      </div>
+    </div>
+
+    <!-- Alert Box if slots freed up -->
+    <div id="alertBox" class="alert-box" style="display: none;"></div>
+
+    <!-- Summary Box -->
+    <div class="summary-box">
+      <span id="summaryText">กำลังโหลดข้อมูล...</span>
+    </div>
+
+    <!-- Table View (Clean & Direct) -->
+    <div class="table-wrapper">
+      <table class="data-table" id="dataTable">
+        <thead>
+          <tr>
+            <th style="width: 140px;">วันที่</th>
+            <th style="width: 100px;">วัน</th>
+            <th style="width: 140px;">สถานะ</th>
+            <th style="width: 160px;">จำนวนที่ว่าง</th>
+            <th style="width: 160px;">จองแล้ว / ทั้งหมด</th>
+            <th>พื้นที่กางเต็นท์</th>
+            <th style="width: 100px;">ลิ้งก์จอง</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 20px;">กำลังดึงข้อมูล...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Simple Calendar Horizontal Strip (Like DNP) -->
+    <div class="dnp-strip-box">
+      <div class="strip-title">ตารางเทียบรายวัน (แบบเดียวกับเว็บ DNP):</div>
+      <div class="strip-wrapper">
+        <table class="strip-table" id="stripTable">
+          <!-- Rendered by JS -->
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
