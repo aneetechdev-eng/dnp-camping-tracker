@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const SYNC_TARGET_URL = process.env.SYNC_TARGET_URL || null;
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '15mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Load parks list
@@ -29,6 +29,8 @@ const state = {
     year: '2026'
   },
   latestData: null,
+  multiData: null,
+  multiDataTime: null,
   previousData: null,
   lastPollTime: null,
   nextPollSeconds: 60,
@@ -47,6 +49,8 @@ async function runPoll() {
 
   try {
     const freshData = await dnpService.fetchCalendarHold(branch, month, year);
+    const parkObj = parksList.find(p => p.code === String(branch));
+    if (parkObj) freshData.parkName = parkObj.name;
     
     // Check diff for newly freed spots
     if (state.latestData) {
@@ -80,19 +84,33 @@ async function runPoll() {
   }
 }
 
+// Background poller for multi-parks every 3 minutes (if on NAS)
+setInterval(async () => {
+  if (!SYNC_TARGET_URL) return; // only run on NAS
+  try {
+    const targetParks = parksList.slice(0, 25);
+    const multi = await dnpService.fetchMultiParks(targetParks, state.activeWatch.month, state.activeWatch.year);
+    state.multiData = multi;
+    state.multiDataTime = Date.now();
+    pushSyncToRemote(multi);
+  } catch (e) {
+    //
+  }
+}, 3 * 60 * 1000);
+
 // Helper: Push data to Render.com
 async function pushSyncToRemote(data) {
   if (!SYNC_TARGET_URL) return;
   const target = SYNC_TARGET_URL.replace(/\/+$/, '');
   try {
     await axios.post(`${target}/api/sync`, {
-      branch: state.activeWatch.branch,
+      branch: data.isMulti ? 'all' : state.activeWatch.branch,
       month: state.activeWatch.month,
       year: state.activeWatch.year,
       data,
       recentAlerts: state.recentAlerts
     }, { timeout: 15000 });
-    console.log(`[SYNC] 🚀 Successfully pushed data to ${target}/api/sync`);
+    console.log(`[SYNC] 🚀 Successfully pushed ${data.isMulti ? 'MULTI-PARK' : 'single'} data to ${target}/api/sync`);
   } catch (err) {
     console.error(`[SYNC] ❌ Failed to push data to ${target}:`, err.message);
   }
@@ -114,6 +132,13 @@ app.post('/api/sync', (req, res) => {
   const { branch, month, year, data, recentAlerts } = req.body;
   if (!data) {
     return res.status(400).json({ success: false, error: 'No data payload' });
+  }
+
+  if (data.isMulti || branch === 'all') {
+    state.multiData = data;
+    state.multiDataTime = Date.now();
+    console.log(`[SYNC] 📥 Received MULTI-PARK sync from NAS (${data.parks ? data.parks.length : 0} parks)`);
+    return res.json({ success: true, timestamp: Date.now() });
   }
 
   state.activeWatch = {
@@ -143,7 +168,33 @@ app.get('/api/availability', async (req, res) => {
   const month = req.query.month || state.activeWatch.month;
   const year = req.query.year || state.activeWatch.year;
 
-  // If matches current watch target and we have fresh data, return it
+  // Case 1: Multi-parks request
+  if (branch === 'all') {
+    if (
+      state.multiData &&
+      state.multiData.month === String(month).padStart(2, '0') &&
+      state.multiData.year === String(year) &&
+      Date.now() - (state.multiDataTime || 0) < 90000
+    ) {
+      return res.json({ ...state.multiData, fromCache: true });
+    }
+
+    try {
+      const targetParks = parksList.slice(0, 25);
+      const multi = await dnpService.fetchMultiParks(targetParks, month, year);
+      state.multiData = multi;
+      state.multiDataTime = Date.now();
+      if (SYNC_TARGET_URL) pushSyncToRemote(multi);
+      return res.json({ ...multi, fromCache: false });
+    } catch (err) {
+      if (state.multiData) {
+        return res.json({ ...state.multiData, fromCache: true });
+      }
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  // Case 2: Single park from cache
   if (
     state.latestData &&
     state.activeWatch.branch === String(branch) &&
@@ -158,9 +209,12 @@ app.get('/api/availability', async (req, res) => {
     });
   }
 
-  // Attempt live fetch from DNP (runs fast in Thailand)
+  // Case 3: Live fetch from DNP
   try {
     const data = await dnpService.fetchCalendarHold(branch, month, year);
+    const parkObj = parksList.find(p => p.code === String(branch));
+    if (parkObj) data.parkName = parkObj.name;
+
     if (
       state.activeWatch.branch === String(branch) &&
       state.activeWatch.month === String(month).padStart(2, '0') &&
@@ -173,7 +227,6 @@ app.get('/api/availability', async (req, res) => {
     }
     res.json({ ...data, fromCache: false, nextPollSeconds: state.nextPollSeconds });
   } catch (err) {
-    // If live fetch fails (e.g. Render geo-blocked by DNP), fallback to latest synced data
     if (state.latestData) {
       console.warn(`[API] Live fetch error (${err.message}), serving latest synced data from NAS`);
       return res.json({
@@ -198,6 +251,7 @@ app.get('/api/poll', (req, res) => {
     lastPollTime: state.lastPollTime,
     nextPollSeconds: state.nextPollSeconds,
     latestData: state.latestData,
+    hasMulti: !!state.multiData,
     recentAlerts: state.recentAlerts,
     isSyncSender: !!SYNC_TARGET_URL
   });
@@ -245,7 +299,7 @@ app.listen(PORT, async () => {
   }
   console.log(`=======================================================`);
   
-  // Initial poll on startup (if not already synced)
+  // Initial poll on startup
   if (!state.latestData) {
     runPoll();
   }

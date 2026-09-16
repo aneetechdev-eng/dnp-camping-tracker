@@ -11,6 +11,11 @@ const btnRefresh = document.getElementById('btnRefresh');
 const lastUpdateTime = document.getElementById('lastUpdateTime');
 const countdownSec = document.getElementById('countdownSec');
 
+const dateFromSelect = document.getElementById('dateFromSelect');
+const dateToSelect = document.getElementById('dateToSelect');
+const nightsSelect = document.getElementById('nightsSelect');
+const btnResetDates = document.getElementById('btnResetDates');
+
 const radioFilters = document.getElementsByName('filterMode');
 const checkWeekendOnly = document.getElementById('checkWeekendOnly');
 const inputMinSeats = document.getElementById('inputMinSeats');
@@ -20,8 +25,37 @@ const countAll = document.getElementById('countAll');
 const summaryText = document.getElementById('summaryText');
 const alertBox = document.getElementById('alertBox');
 
+const tableHead = document.getElementById('tableHead');
 const tableBody = document.getElementById('tableBody');
+const dnpStripBox = document.getElementById('dnpStripBox');
 const stripTable = document.getElementById('stripTable');
+
+// Populate Date Options (1 - 31)
+function populateDateDropdowns(month, year) {
+  const m = parseInt(month, 10);
+  const y = parseInt(year, 10);
+  const daysInMonth = new Date(y, m, 0).getDate();
+
+  const prevFrom = dateFromSelect.value;
+  const prevTo = dateToSelect.value;
+
+  dateFromSelect.innerHTML = '<option value="">-- วันเริ่มต้น --</option>';
+  dateToSelect.innerHTML = '<option value="">-- วันสิ้นสุด --</option>';
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const optFrom = document.createElement('option');
+    optFrom.value = String(d);
+    optFrom.textContent = `วันที่ ${d}`;
+    if (String(d) === prevFrom) optFrom.selected = true;
+    dateFromSelect.appendChild(optFrom);
+
+    const optTo = document.createElement('option');
+    optTo.value = String(d);
+    optTo.textContent = `วันที่ ${d}`;
+    if (String(d) === prevTo) optTo.selected = true;
+    dateToSelect.appendChild(optTo);
+  }
+}
 
 // Load Parks
 async function loadParks() {
@@ -29,12 +63,12 @@ async function loadParks() {
     const res = await fetch('/api/parks');
     const data = await res.json();
     if (data.parks) {
-      parkSelect.innerHTML = '';
+      parkSelect.innerHTML = '<option value="all">⭐ อุทยานแห่งชาติทั้งหมด (ค้นหาทุกอุทยาน)</option>';
       data.parks.forEach(p => {
         const opt = document.createElement('option');
         opt.value = p.code;
         opt.textContent = p.name;
-        if (p.code === '84') opt.selected = true; // ภูสอยดาว
+        if (p.code === '84') opt.selected = true; // ภูสอยดาว default
         parkSelect.appendChild(opt);
       });
     }
@@ -49,79 +83,135 @@ async function fetchData() {
   const month = monthSelect.value;
   const year = yearSelect.value;
 
+  populateDateDropdowns(month, year);
+
   if (!rawData) {
-    tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px;">กำลังโหลดข้อมูลล่าสุด...</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 25px;">กำลังโหลดข้อมูลล่าสุด...</td></tr>`;
   }
 
   try {
     const res = await fetch(`/api/availability?branch=${branch}&month=${month}&year=${year}`);
     const data = await res.json();
 
-    if (data.success && data.zones) {
+    if (data.success) {
       rawData = data;
       lastUpdateTime.textContent = data.updatedAtText || new Date().toLocaleTimeString('th-TH');
       countdown = data.nextPollSeconds || 60;
       render();
     } else {
-      // If error, check if poll has data
+      // Check poll fallback
       const pollRes = await fetch('/api/poll');
       const pollData = await pollRes.json();
-      if (pollData.latestData && pollData.latestData.zones) {
+      if (pollData.latestData && (pollData.latestData.zones || pollData.latestData.parks)) {
         rawData = pollData.latestData;
         lastUpdateTime.textContent = rawData.updatedAtText || new Date().toLocaleTimeString('th-TH');
         countdown = pollData.nextPollSeconds || 60;
         render();
       } else {
-        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #b91c1c; padding: 20px;">${data.error || 'กำลังรอข้อมูล Sync รอบแรกจากเซิร์ฟเวอร์ NAS... (กดรีเฟรชอีกครั้งใน 10 วินาที)'}</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #b91c1c; padding: 20px;">${data.error || 'กำลังรอข้อมูล Sync รอบแรกจาก NAS...'}</td></tr>`;
       }
     }
   } catch (err) {
-    tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #b91c1c; padding: 20px;">เกิดข้อผิดพลาดในการเชื่อมต่อ: ${err.message}</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #b91c1c; padding: 20px;">เกิดข้อผิดพลาดในการเชื่อมต่อ: ${err.message}</td></tr>`;
   }
 }
 
-// Render Data
-function render() {
-  if (!rawData || !rawData.zones || rawData.zones.length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px;">ไม่มีข้อมูลพื้นที่กางเต็นท์ในอุทยานนี้</td></tr>`;
-    summaryText.textContent = 'ไม่มีข้อมูล';
-    return;
+// Helper: Check consecutive nights availability
+function isConsecutiveAvailable(daysList, startIndex, nights, minSeats) {
+  if (startIndex + nights > daysList.length) return false;
+  for (let i = 0; i < nights; i++) {
+    const day = daysList[startIndex + i];
+    if (!day.isAvailable || day.available < minSeats) {
+      return false;
+    }
   }
+  return true;
+}
 
-  const zone = rawData.zones[0];
-  const totalDays = zone.days.length;
-  const totalAvailable = zone.totalAvailableDays;
-  const totalFull = zone.totalFullDays;
+// Main Render Logic
+function render() {
+  if (!rawData) return;
 
-  countAll.textContent = totalDays;
-  countAvailable.textContent = totalAvailable;
+  const isMulti = rawData.isMulti || Array.isArray(rawData.parks);
+  const minSeats = parseInt(inputMinSeats.value, 10) || 1;
+  const nights = parseInt(nightsSelect.value, 10) || 1;
+  const fromDay = dateFromSelect.value ? parseInt(dateFromSelect.value, 10) : null;
+  const toDay = dateToSelect.value ? parseInt(dateToSelect.value, 10) : null;
 
-  summaryText.innerHTML = `
-    <b>${zone.zoneName}</b> (${parkSelect.options[parkSelect.selectedIndex].text}) — 
-    เดือน ${rawData.monthName} ${rawData.buddhistYear} | ความจุ: <b>${zone.capacity} คน</b> | 
-    มีที่ว่าง: <b style="color: #059669;">${totalAvailable} วัน</b> | เต็มแล้ว: <b style="color: #dc2626;">${totalFull} วัน</b>
-  `;
-
-  // Get active filter
   let filterMode = 'available';
   for (const r of radioFilters) {
     if (r.checked) filterMode = r.value;
   }
   const weekendOnly = checkWeekendOnly.checked;
-  const minSeats = parseInt(inputMinSeats.value, 10) || 1;
 
-  // Filter rows
-  const filtered = zone.days.filter(d => {
+  if (isMulti) {
+    renderMultiParks(rawData.parks, { filterMode, weekendOnly, minSeats, nights, fromDay, toDay });
+    dnpStripBox.style.display = 'none';
+  } else {
+    renderSinglePark(rawData, { filterMode, weekendOnly, minSeats, nights, fromDay, toDay });
+    dnpStripBox.style.display = 'block';
+  }
+}
+
+// Render Single Park
+function renderSinglePark(data, filters) {
+  const { filterMode, weekendOnly, minSeats, nights, fromDay, toDay } = filters;
+  const zone = data.zones && data.zones[0];
+  if (!zone) {
+    tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px;">ไม่มีข้อมูลพื้นที่กางเต็นท์ในอุทยานนี้</td></tr>`;
+    summaryText.textContent = 'ไม่มีข้อมูล';
+    return;
+  }
+
+  const parkName = data.parkName || (parkSelect.options[parkSelect.selectedIndex] ? parkSelect.options[parkSelect.selectedIndex].text : 'อุทยานแห่งชาติ');
+  const allDays = zone.days;
+
+  // Filter days
+  const filtered = allDays.filter((d, idx) => {
+    // Date range filter
+    if (fromDay !== null && d.day < fromDay) return false;
+    if (toDay !== null && d.day > toDay) return false;
+
+    // Weekend filter
     if (weekendOnly && !d.isWeekend) return false;
+
+    // Min seats & available mode
     if (filterMode === 'available') {
-      return d.isAvailable && d.available >= minSeats;
+      if (!d.isAvailable || d.available < minSeats) return false;
+      // Consecutive nights check
+      if (nights > 1 && !isConsecutiveAvailable(allDays, idx, nights, minSeats)) {
+        return false;
+      }
     }
-    return true; // 'all'
+
+    return true;
   });
 
-  // Render Main Table
+  countAll.textContent = allDays.length;
+  countAvailable.textContent = zone.totalAvailableDays;
+
+  // Summary Text
+  let rangeDesc = '';
+  if (fromDay && toDay) {
+    rangeDesc = ` | กรองช่วง: <b>วันที่ ${fromDay} - ${toDay} ${data.monthName}</b>`;
+  } else if (fromDay) {
+    rangeDesc = ` | ตั้งแต่วันที่: <b>${fromDay} ${data.monthName} เป็นต้นไป</b>`;
+  } else if (toDay) {
+    rangeDesc = ` | ถึงวันที่: <b>${toDay} ${data.monthName}</b>`;
+  }
+
+  let stayDesc = nights > 1 ? ` | พักต่อเนื่อง: <b>${nights} คืน</b>` : '';
+
+  summaryText.innerHTML = `
+    <b>${parkName}</b> — <b>${zone.zoneName}</b> (ความจุ: ${zone.capacity} คน) | 
+    เดือน ${data.monthName} ${data.buddhistYear} | 
+    มีที่ว่าง: <b style="color: #059669;">${zone.totalAvailableDays} วัน</b> | 
+    เต็มแล้ว: <b style="color: #dc2626;">${zone.totalFullDays} วัน</b>
+    ${rangeDesc}${stayDesc}
+  `;
+
   if (filtered.length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: #666;">ไม่พบวันที่ตรงตามเงื่อนไขตัวกรอง (ลองเลือก "แสดงทุกวัน" หรือลดจำนวนที่ว่างขั้นต่ำ)</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 30px; color: #666;">ไม่พบวันที่ตรงตามเงื่อนไข (ลองเปลี่ยนช่วงวัน หรือลดจำนวนคืนที่พัก)</td></tr>`;
   } else {
     tableBody.innerHTML = filtered.map(d => {
       const rowClass = d.isFull ? 'row-full' : 'row-available';
@@ -138,12 +228,18 @@ function render() {
         numDisplay = `<span class="num-available" style="color: #d97706;">ว่าง ${d.available} ที่</span>`;
       }
 
+      let consecutiveTag = '';
+      if (nights > 1 && d.isAvailable) {
+        consecutiveTag = `<div style="font-size: 0.75rem; color: #059669;">(ว่างต่อเนื่อง ${nights} คืน ✓)</div>`;
+      }
+
       return `
         <tr class="${rowClass} ${weekendClass}">
+          <td><b>${parkName}</b></td>
           <td><b>${d.thaiDate}</b></td>
           <td class="col-day">วัน${d.dayName} ${d.isWeekend ? '(ส.-อา.)' : ''}</td>
           <td>${badge}</td>
-          <td>${numDisplay}</td>
+          <td>${numDisplay}${consecutiveTag}</td>
           <td>จองแล้ว <b>${d.booked}</b> / ${d.capacity} คน</td>
           <td>${zone.zoneName}</td>
           <td>
@@ -156,14 +252,112 @@ function render() {
     }).join('');
   }
 
-  // Render Horizontal Strip (Like DNP screenshot)
   renderDnpStrip(zone);
 }
 
-// Render Horizontal Strip like DNP table
+// Render Multi Parks
+function renderMultiParks(parks, filters) {
+  const { filterMode, weekendOnly, minSeats, nights, fromDay, toDay } = filters;
+
+  const rows = [];
+  let totalAvailableSlots = 0;
+
+  parks.forEach(p => {
+    const parkName = p.parkName || p.branch;
+    if (!p.zones) return;
+
+    p.zones.forEach(zone => {
+      const allDays = zone.days;
+      allDays.forEach((d, idx) => {
+        // Date range
+        if (fromDay !== null && d.day < fromDay) return;
+        if (toDay !== null && d.day > toDay) return;
+
+        // Weekend
+        if (weekendOnly && !d.isWeekend) return;
+
+        // Min seats & available
+        if (filterMode === 'available') {
+          if (!d.isAvailable || d.available < minSeats) return;
+          if (nights > 1 && !isConsecutiveAvailable(allDays, idx, nights, minSeats)) return;
+        }
+
+        if (d.isAvailable) totalAvailableSlots++;
+
+        rows.push({
+          parkName,
+          zoneName: zone.zoneName,
+          capacity: zone.capacity,
+          day: d,
+          allDays,
+          idx
+        });
+      });
+    });
+  });
+
+  countAll.textContent = rows.length;
+  countAvailable.textContent = totalAvailableSlots;
+
+  summaryText.innerHTML = `
+    ⭐ <b>ค้นหาทุกอุทยานแห่งชาติ</b> (พบพื้นที่กางเต็นท์ใน ${parks.length} อุทยาน) | 
+    ผลการค้นหาตามเงื่อนไข: <b style="color: #059669;">${rows.length} รายการ</b> 
+    ${nights > 1 ? `| พักต่อเนื่อง: <b>${nights} คืน</b>` : ''}
+    ${fromDay && toDay ? `| ช่วงวันที่: <b>${fromDay} - ${toDay}</b>` : ''}
+  `;
+
+  if (rows.length === 0) {
+    tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 30px; color: #666;">ไม่พบอุทยานที่ว่างตามเงื่อนไขที่เลือก (ลองเปลี่ยนช่วงวัน หรือลดจำนวนคืนที่พัก)</td></tr>`;
+    return;
+  }
+
+  tableBody.innerHTML = rows.map(r => {
+    const d = r.day;
+    const rowClass = d.isFull ? 'row-full' : 'row-available';
+    const weekendClass = d.isWeekend ? 'row-weekend' : '';
+
+    let badge = `<span class="badge badge-green">ว่าง</span>`;
+    let numDisplay = `<span class="num-available">ว่าง ${d.available} ที่</span>`;
+
+    if (d.isFull) {
+      badge = `<span class="badge badge-red">เต็มแล้ว</span>`;
+      numDisplay = `<span class="num-full">0 ที่ (เต็ม)</span>`;
+    } else if (d.status === 'warning') {
+      badge = `<span class="badge badge-yellow">ใกล้เต็ม</span>`;
+      numDisplay = `<span class="num-available" style="color: #d97706;">ว่าง ${d.available} ที่</span>`;
+    }
+
+    let consecutiveTag = '';
+    if (nights > 1 && d.isAvailable) {
+      consecutiveTag = `<div style="font-size: 0.75rem; color: #059669;">(ว่างต่อเนื่อง ${nights} คืน ✓)</div>`;
+    }
+
+    return `
+      <tr class="${rowClass} ${weekendClass}">
+        <td><b style="color: #005c9c;">${r.parkName}</b></td>
+        <td><b>${d.thaiDate}</b></td>
+        <td class="col-day">วัน${d.dayName} ${d.isWeekend ? '(ส.-อา.)' : ''}</td>
+        <td>${badge}</td>
+        <td>${numDisplay}${consecutiveTag}</td>
+        <td>จองแล้ว <b>${d.booked}</b> / ${d.capacity} คน</td>
+        <td>${r.zoneName}</td>
+        <td>
+          ${d.isFull 
+            ? '<span style="color:#aaa; font-size: 0.8rem;">-</span>' 
+            : '<a href="https://nps.dnp.go.th/reservation.php?option=area" target="_blank" class="btn-book">จอง ➔</a>'}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// Render DNP Strip Table
 function renderDnpStrip(zone) {
   let htmlHeader = '<tr><th style="font-weight: 600; text-align: left; padding: 5px 8px; background: #e2e8f0;">กำลังจอง+จองแล้ว/ทั้งหมด</th>';
   let htmlRow = `<tr><td style="text-align: left; padding: 5px 8px; font-weight: 600; background: #f8fafc;">${zone.zoneName}</td>`;
+
+  const mName = (rawData && rawData.monthName) ? rawData.monthName.substring(0, 4) : 'ต.ค.';
+  const bYear = (rawData && rawData.buddhistYear) ? rawData.buddhistYear : '2569';
 
   zone.days.forEach(d => {
     const isWk = d.isWeekend;
@@ -171,8 +365,8 @@ function renderDnpStrip(zone) {
     htmlHeader += `
       <th class="${headerClass}">
         <b>${d.day}</b><br>
-        <span style="color: ${isWk ? '#d97706' : '#dc2626'};">${rawData.monthName.substring(0, 4)}</span><br>
-        <span style="font-size: 0.72rem; color: #888;">${rawData.buddhistYear}</span>
+        <span style="color: ${isWk ? '#d97706' : '#dc2626'};">${mName}</span><br>
+        <span style="font-size: 0.72rem; color: #888;">${bYear}</span>
       </th>
     `;
 
@@ -195,14 +389,13 @@ setInterval(() => {
     countdown--;
     countdownSec.textContent = countdown;
   } else {
-    // Poll now!
     countdown = 60;
     countdownSec.textContent = countdown;
     fetchData();
   }
 }, 1000);
 
-// Check for server-side alert diffs every 4 seconds
+// Alert checker
 setInterval(async () => {
   try {
     const res = await fetch('/api/poll');
@@ -217,14 +410,36 @@ setInterval(async () => {
 }, 4000);
 
 // Event Listeners
-btnSearch.addEventListener('click', () => {
-  fetchData();
-});
-
+btnSearch.addEventListener('click', fetchData);
 btnRefresh.addEventListener('click', () => {
   countdown = 60;
   countdownSec.textContent = countdown;
   fetchData();
+});
+
+parkSelect.addEventListener('change', () => {
+  fetchData();
+});
+
+monthSelect.addEventListener('change', () => {
+  populateDateDropdowns(monthSelect.value, yearSelect.value);
+  fetchData();
+});
+
+yearSelect.addEventListener('change', () => {
+  populateDateDropdowns(monthSelect.value, yearSelect.value);
+  fetchData();
+});
+
+dateFromSelect.addEventListener('change', render);
+dateToSelect.addEventListener('change', render);
+nightsSelect.addEventListener('change', render);
+
+btnResetDates.addEventListener('click', () => {
+  dateFromSelect.value = '';
+  dateToSelect.value = '';
+  nightsSelect.value = '1';
+  render();
 });
 
 for (const r of radioFilters) {
@@ -235,6 +450,7 @@ inputMinSeats.addEventListener('input', render);
 
 // Init
 (async function init() {
+  populateDateDropdowns('10', '2026');
   await loadParks();
   fetchData();
 })();

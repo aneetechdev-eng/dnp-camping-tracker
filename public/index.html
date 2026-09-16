@@ -21,10 +21,12 @@
 
     <!-- Filter & Options Bar -->
     <div class="control-box">
+      <!-- Row 1: Park, Month, Year -->
       <div class="form-row">
-        <div class="form-item">
+        <div class="form-item" style="flex: 2; min-width: 220px;">
           <label>อุทยานแห่งชาติ:</label>
-          <select id="parkSelect" class="input-select">
+          <select id="parkSelect" class="input-select" style="width: 100%;">
+            <option value="all">⭐ อุทยานแห่งชาติทั้งหมด (ค้นหาทุกอุทยาน)</option>
             <option value="84" selected>อช.ภูสอยดาว</option>
           </select>
         </div>
@@ -64,13 +66,47 @@
 
       <hr class="divider">
 
-      <!-- Simple Filter Row -->
+      <!-- Row 2: Date Range & Stay Duration -->
+      <div class="form-row" style="align-items: center;">
+        <div class="form-item">
+          <label>📅 ไปวันไหน (วันเริ่มต้น):</label>
+          <select id="dateFromSelect" class="input-select" style="min-width: 110px;">
+            <option value="">-- ไม่ระบุ --</option>
+          </select>
+        </div>
+
+        <div class="form-item">
+          <label>📅 กลับวันไหน (วันสิ้นสุด):</label>
+          <select id="dateToSelect" class="input-select" style="min-width: 110px;">
+            <option value="">-- ไม่ระบุ --</option>
+          </select>
+        </div>
+
+        <div class="form-item">
+          <label>⛺ พักกี่วัน / คืน (ต่อเนื่อง):</label>
+          <select id="nightsSelect" class="input-select" style="min-width: 130px;">
+            <option value="1" selected>1 คืน (2 วัน 1 คืน)</option>
+            <option value="2">2 คืน (3 วัน 2 คืน)</option>
+            <option value="3">3 คืน (4 วัน 3 คืน)</option>
+            <option value="4">4 คืนขึ้นไป</option>
+          </select>
+        </div>
+
+        <div class="form-item" style="margin-left: auto;">
+          <label>&nbsp;</label>
+          <button id="btnResetDates" class="btn btn-sm" title="ล้างตัวกรองวันที่">ล้างวันที่</button>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Row 3: Simple Filter Options -->
       <div class="filter-row">
         <label class="filter-label"><b>การแสดงผล:</b></label>
         
         <label class="radio-item">
           <input type="radio" name="filterMode" value="available" checked>
-          <span><b>แสดงเฉพาะวันที่มีที่ว่าง</b> (<span id="countAvailable">0</span> วัน)</span>
+          <span><b>เฉพาะวันที่มีที่ว่าง</b> (<span id="countAvailable">0</span> วัน)</span>
         </label>
 
         <label class="radio-item">
@@ -104,27 +140,28 @@
     <!-- Table View (Clean & Direct) -->
     <div class="table-wrapper">
       <table class="data-table" id="dataTable">
-        <thead>
+        <thead id="tableHead">
           <tr>
-            <th style="width: 140px;">วันที่</th>
-            <th style="width: 100px;">วัน</th>
-            <th style="width: 140px;">สถานะ</th>
-            <th style="width: 160px;">จำนวนที่ว่าง</th>
-            <th style="width: 160px;">จองแล้ว / ทั้งหมด</th>
+            <th style="width: 170px;">อุทยานแห่งชาติ</th>
+            <th style="width: 130px;">วันที่</th>
+            <th style="width: 95px;">วัน</th>
+            <th style="width: 110px;">สถานะ</th>
+            <th style="width: 140px;">จำนวนที่ว่าง</th>
+            <th style="width: 150px;">จองแล้ว / ทั้งหมด</th>
             <th>พื้นที่กางเต็นท์</th>
-            <th style="width: 100px;">ลิ้งก์จอง</th>
+            <th style="width: 85px;">ลิ้งก์จอง</th>
           </tr>
         </thead>
         <tbody id="tableBody">
           <tr>
-            <td colspan="7" style="text-align: center; padding: 20px;">กำลังดึงข้อมูล...</td>
+            <td colspan="8" style="text-align: center; padding: 20px;">กำลังดึงข้อมูล...</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- Simple Calendar Horizontal Strip (Like DNP) -->
-    <div class="dnp-strip-box">
+    <!-- Simple Calendar Horizontal Strip (Like DNP - shown when single park is selected) -->
+    <div class="dnp-strip-box" id="dnpStripBox">
       <div class="strip-title">ตารางเทียบรายวัน (แบบเดียวกับเว็บ DNP):</div>
       <div class="strip-wrapper">
         <table class="strip-table" id="stripTable">

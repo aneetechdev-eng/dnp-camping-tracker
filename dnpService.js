@@ -200,6 +200,48 @@ class DnpService {
     };
   }
 
+  // Fetch multiple parks in parallel with concurrency limit
+  async fetchMultiParks(parkList, month = '10', year = '2026') {
+    const results = [];
+    const batchSize = 6; // safe concurrency for DNP server
+
+    for (let i = 0; i < parkList.length; i += batchSize) {
+      const batch = parkList.slice(i, i + batchSize);
+      const batchPromises = batch.map(async (p) => {
+        try {
+          const res = await this.fetchCalendarHold(p.code, month, year);
+          if (res && res.zones && res.zones.length > 0) {
+            return {
+              ...res,
+              parkCode: p.code,
+              parkName: p.name
+            };
+          }
+        } catch (e) {
+          // ignore failed individual park
+        }
+        return null;
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      batchResults.forEach(r => {
+        if (r) results.push(r);
+      });
+    }
+
+    return {
+      success: true,
+      isMulti: true,
+      timestamp: new Date().toISOString(),
+      updatedAtText: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      month,
+      year,
+      buddhistYear: parseInt(year, 10) + 543,
+      totalParks: results.length,
+      parks: results
+    };
+  }
+
   // Detect newly opened spots by comparing with previous snapshot
   checkDiff(previous, current) {
     if (!previous || !current || !previous.zones || !current.zones) {
