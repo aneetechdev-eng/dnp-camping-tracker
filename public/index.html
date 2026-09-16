@@ -23,78 +23,82 @@
     <div class="control-box">
       <!-- Row 1: Park, Month, Year -->
       <div class="form-row">
-        <div class="form-item" style="flex: 2; min-width: 220px;">
-          <label>อุทยานแห่งชาติ:</label>
-          <select id="parkSelect" class="input-select" style="width: 100%;">
+        <div class="form-item form-item-park">
+          <label>🏕️ อุทยานแห่งชาติ:</label>
+          <select id="parkSelect" class="input-select">
             <option value="all">⭐ อุทยานแห่งชาติทั้งหมด (ค้นหาทุกอุทยาน)</option>
             <option value="84" selected>อช.ภูสอยดาว</option>
           </select>
         </div>
 
-        <div class="form-item">
-          <label>เดือน:</label>
-          <select id="monthSelect" class="input-select">
-            <option value="01">มกราคม</option>
-            <option value="02">กุมภาพันธ์</option>
-            <option value="03">มีนาคม</option>
-            <option value="04">เมษายน</option>
-            <option value="05">พฤษภาคม</option>
-            <option value="06">มิถุนายน</option>
-            <option value="07">กรกฎาคม</option>
-            <option value="08">สิงหาคม</option>
-            <option value="09">กันยายน</option>
-            <option value="10" selected>ตุลาคม</option>
-            <option value="11">พฤศจิกายน</option>
-            <option value="12">ธันวาคม</option>
-          </select>
+        <div class="form-row-2col form-row-my">
+          <div class="form-item">
+            <label>เดือน:</label>
+            <select id="monthSelect" class="input-select">
+              <option value="01">มกราคม</option>
+              <option value="02">กุมภาพันธ์</option>
+              <option value="03">มีนาคม</option>
+              <option value="04">เมษายน</option>
+              <option value="05">พฤษภาคม</option>
+              <option value="06">มิถุนายน</option>
+              <option value="07">กรกฎาคม</option>
+              <option value="08">สิงหาคม</option>
+              <option value="09">กันยายน</option>
+              <option value="10" selected>ตุลาคม</option>
+              <option value="11">พฤศจิกายน</option>
+              <option value="12">ธันวาคม</option>
+            </select>
+          </div>
+
+          <div class="form-item">
+            <label>ปี พ.ศ.:</label>
+            <select id="yearSelect" class="input-select">
+              <option value="2025">2568</option>
+              <option value="2026" selected>2569</option>
+              <option value="2027">2570</option>
+            </select>
+          </div>
         </div>
 
-        <div class="form-item">
-          <label>ปี พ.ศ.:</label>
-          <select id="yearSelect" class="input-select">
-            <option value="2025">2568</option>
-            <option value="2026" selected>2569</option>
-            <option value="2027">2570</option>
-          </select>
-        </div>
-
-        <div class="form-item">
-          <label>&nbsp;</label>
-          <button id="btnSearch" class="btn btn-primary">ค้นหา</button>
+        <div class="form-item form-item-search">
+          <button id="btnSearch" class="btn btn-primary btn-search-wide">ค้นหาล่าสุด</button>
         </div>
       </div>
 
       <hr class="divider">
 
       <!-- Row 2: Date Range & Stay Duration -->
-      <div class="form-row" style="align-items: center;">
-        <div class="form-item">
-          <label>📅 ไปวันไหน (วันเริ่มต้น):</label>
-          <select id="dateFromSelect" class="input-select" style="min-width: 110px;">
-            <option value="">-- ไม่ระบุ --</option>
-          </select>
+      <div class="form-row form-row-dates">
+        <div class="form-row-2col form-col-flex">
+          <div class="form-item">
+            <label>📅 ไปวันไหน (เริ่มต้น):</label>
+            <select id="dateFromSelect" class="input-select">
+              <option value="">-- ไม่ระบุ --</option>
+            </select>
+          </div>
+
+          <div class="form-item">
+            <label>📅 กลับวันไหน (สิ้นสุด):</label>
+            <select id="dateToSelect" class="input-select">
+              <option value="">-- ไม่ระบุ --</option>
+            </select>
+          </div>
         </div>
 
-        <div class="form-item">
-          <label>📅 กลับวันไหน (วันสิ้นสุด):</label>
-          <select id="dateToSelect" class="input-select" style="min-width: 110px;">
-            <option value="">-- ไม่ระบุ --</option>
-          </select>
-        </div>
+        <div class="form-row-2col form-col-flex">
+          <div class="form-item" style="flex: 1;">
+            <label>⛺ พักกี่วัน / คืน (ต่อเนื่อง):</label>
+            <select id="nightsSelect" class="input-select">
+              <option value="1" selected>1 คืน (2 วัน 1 คืน)</option>
+              <option value="2">2 คืน (3 วัน 2 คืน)</option>
+              <option value="3">3 คืน (4 วัน 3 คืน)</option>
+              <option value="4">4 คืนขึ้นไป</option>
+            </select>
+          </div>
 
-        <div class="form-item">
-          <label>⛺ พักกี่วัน / คืน (ต่อเนื่อง):</label>
-          <select id="nightsSelect" class="input-select" style="min-width: 130px;">
-            <option value="1" selected>1 คืน (2 วัน 1 คืน)</option>
-            <option value="2">2 คืน (3 วัน 2 คืน)</option>
-            <option value="3">3 คืน (4 วัน 3 คืน)</option>
-            <option value="4">4 คืนขึ้นไป</option>
-          </select>
-        </div>
-
-        <div class="form-item" style="margin-left: auto;">
-          <label>&nbsp;</label>
-          <button id="btnResetDates" class="btn btn-sm" title="ล้างตัวกรองวันที่">ล้างวันที่</button>
+          <div class="form-item btn-reset-container">
+            <button id="btnResetDates" class="btn btn-sm btn-reset" title="ล้างตัวกรองวันที่">ล้างวันที่</button>
+          </div>
         </div>
       </div>
 
@@ -102,30 +106,30 @@
 
       <!-- Row 3: Simple Filter Options -->
       <div class="filter-row">
-        <label class="filter-label"><b>การแสดงผล:</b></label>
+        <span class="filter-label"><b>แสดง:</b></span>
         
-        <label class="radio-item">
+        <label class="filter-chip">
           <input type="radio" name="filterMode" value="available" checked>
-          <span><b>เฉพาะวันที่มีที่ว่าง</b> (<span id="countAvailable">0</span> วัน)</span>
+          <span><b>เฉพาะที่มีที่ว่าง</b> (<span id="countAvailable">0</span>)</span>
         </label>
 
-        <label class="radio-item">
+        <label class="filter-chip">
           <input type="radio" name="filterMode" value="all">
-          <span>แสดงทุกวัน (<span id="countAll">0</span> วัน)</span>
+          <span>แสดงทุกวัน (<span id="countAll">0</span>)</span>
         </label>
 
-        <label class="checkbox-item">
+        <label class="filter-chip">
           <input type="checkbox" id="checkWeekendOnly">
-          <span>เฉพาะวันเสาร์-อาทิตย์</span>
+          <span>เฉพาะเสาร์-อาทิตย์</span>
         </label>
 
-        <div class="min-seats-item">
+        <div class="min-seats-chip">
           <span>ว่างอย่างน้อย:</span>
           <input type="number" id="inputMinSeats" value="1" min="1" max="500">
           <span>ที่</span>
         </div>
 
-        <a href="https://nps.dnp.go.th/reservation.php" target="_blank" class="link-dnp">ไปยังเว็บจอง DNP ↗</a>
+        <a href="https://nps.dnp.go.th/reservation.php" target="_blank" class="link-dnp">เว็บจอง DNP ↗</a>
       </div>
     </div>
 
@@ -137,8 +141,25 @@
       <span id="summaryText">กำลังโหลดข้อมูล...</span>
     </div>
 
+    <!-- Results Header: Count + View Switcher -->
+    <div class="results-header">
+      <div class="results-count" id="resultsCountBadge">
+        พบ <b>0</b> รายการ
+      </div>
+      <div class="view-switcher">
+        <button type="button" id="btnViewCard" class="btn-toggle active" title="มุมมองการ์ด (เหมาะสำหรับมือถือ)">📱 การ์ด</button>
+        <button type="button" id="btnViewTable" class="btn-toggle" title="มุมมองตาราง">📊 ตาราง</button>
+      </div>
+    </div>
+
+    <!-- Mobile Cards View -->
+    <div id="cardsWrapper" class="cards-wrapper">
+      <div class="cards-empty" style="text-align: center; padding: 30px; color: #64748b;">กำลังดึงข้อมูลล่าสุด...</div>
+    </div>
+
     <!-- Table View (Clean & Direct) -->
-    <div class="table-wrapper">
+    <div id="tableWrapper" class="table-wrapper">
+      <div class="table-swipe-hint">👉 เลื่อนตารางไปทางซ้าย-ขวาเพื่อดูคอลัมน์ทั้งหมด</div>
       <table class="data-table" id="dataTable">
         <thead id="tableHead">
           <tr>

@@ -130,11 +130,16 @@ function isConsecutiveAvailable(daysList, startIndex, nights, minSeats) {
 
 // Helper: Format consecutive stay details
 function formatRowDetails(d, allDays, idx, nights, monthName, buddhistYear) {
-  if (nights <= 1 || !d.isAvailable) {
+  const isAvailable = d.isAvailable;
+  const isFull = d.isFull;
+  const mName = monthName || 'ต.ค.';
+  const bYear = buddhistYear || '2569';
+
+  if (nights <= 1 || !isAvailable) {
     let badge = `<span class="badge badge-green">ว่าง</span>`;
     let numDisplay = `<span class="num-available">ว่าง ${d.available} ที่</span>`;
 
-    if (d.isFull) {
+    if (isFull) {
       badge = `<span class="badge badge-red">เต็มแล้ว</span>`;
       numDisplay = `<span class="num-full">0 ที่ (เต็ม)</span>`;
     } else if (d.status === 'warning') {
@@ -147,7 +152,12 @@ function formatRowDetails(d, allDays, idx, nights, monthName, buddhistYear) {
       dateHtml: `<b>${d.thaiDate}</b>`,
       dayHtml: `วัน${d.dayName} ${d.isWeekend ? '(ส.-อา.)' : ''}`,
       numHtml: numDisplay,
-      bookedHtml: `จองแล้ว <b>${d.booked}</b> / ${d.capacity} คน`
+      bookedHtml: `จองแล้ว <b>${d.booked}</b> / ${d.capacity} คน`,
+      cardDateTitle: `${d.thaiDate}`,
+      cardDaySubtitle: `วัน${d.dayName} ${d.isWeekend ? '(วันหยุดเสาร์-อาทิตย์)' : ''}`,
+      cardSeatsDisplay: isFull ? `<span class="num-full">0 ที่ (เต็ม)</span>` : `<span class="num-available">ว่าง ${d.available} ที่</span>`,
+      cardBookedDisplay: `จองแล้ว <b>${d.booked}</b> / ${d.capacity} คน`,
+      cardBreakdownHtml: ''
     };
   }
 
@@ -157,7 +167,6 @@ function formatRowDetails(d, allDays, idx, nights, monthName, buddhistYear) {
   const checkoutDayObj = allDays[idx + nights];
   const checkoutDayNum = checkoutDayObj ? checkoutDayObj.day : (d.day + nights);
   const checkoutDayName = checkoutDayObj ? `วัน${checkoutDayObj.dayName}` : '';
-  const mName = monthName || 'ต.ค.';
 
   const badge = `<span class="badge badge-green">ว่าง ${nights} คืน ✓</span>`;
 
@@ -192,13 +201,106 @@ function formatRowDetails(d, allDays, idx, nights, monthName, buddhistYear) {
     </div>
   `;
 
+  const cardBreakdownHtml = stayDays.map((st, i) => `
+    <div class="card-breakdown-row">
+      <span>🌙 คืนที่ ${i + 1} (${st.day} ${mName} - วัน${st.dayName}):</span>
+      <b style="color: #059669;">ว่าง ${st.available} ที่</b>
+      <small style="color: #64748b;">(จองแล้ว ${st.booked}/${st.capacity})</small>
+    </div>
+  `).join('');
+
   return {
     badge,
     dateHtml,
     dayHtml,
     numHtml,
-    bookedHtml
+    bookedHtml,
+    cardDateTitle: `เข้า ${d.day} ➔ ออก ${checkoutDayNum} ${mName} ${bYear}`,
+    cardDaySubtitle: `วัน${d.dayName} ถึง ${checkoutDayName} (พัก ${nights} คืน)`,
+    cardSeatsDisplay: `<span class="num-available">ว่างขั้นต่ำ <b>${minAvailable}</b> ที่</span>`,
+    cardBookedDisplay: `ความจุ ${d.capacity} คน/คืน`,
+    cardBreakdownHtml
   };
+}
+
+// Render Card HTML for Mobile
+function renderCardHtml(parkName, zoneName, d, formatted) {
+  const isFull = d.isFull;
+  const isWeekend = d.isWeekend;
+  const cardClass = isFull ? 'card-full' : 'card-available';
+  const weekendClass = isWeekend ? 'card-weekend' : '';
+
+  return `
+    <div class="result-card ${cardClass} ${weekendClass}">
+      <div class="card-header">
+        <div class="card-park-title">🏕️ <b>${parkName}</b></div>
+        <div>${formatted.badge}</div>
+      </div>
+
+      <div class="card-date-banner">
+        <div class="card-date-main">📅 <b>${formatted.cardDateTitle}</b></div>
+        <div class="card-date-sub">${formatted.cardDaySubtitle}</div>
+      </div>
+
+      <div class="card-info-grid">
+        <div class="card-info-box">
+          <div class="info-label">จำนวนที่ว่าง</div>
+          <div class="info-value">${formatted.cardSeatsDisplay}</div>
+        </div>
+        <div class="card-info-box">
+          <div class="info-label">ยอดจอง / ความจุ</div>
+          <div class="info-value-sm">${formatted.cardBookedDisplay}</div>
+        </div>
+      </div>
+
+      ${formatted.cardBreakdownHtml ? `
+        <div class="card-breakdown-container">
+          <div class="breakdown-header">📋 รายละเอียดแยกแต่ละคืน:</div>
+          ${formatted.cardBreakdownHtml}
+        </div>
+      ` : ''}
+
+      <div class="card-footer-zone">
+        <span>⛺ <b>พื้นที่:</b> ${zoneName}</span>
+      </div>
+
+      <div class="card-action-bar">
+        ${isFull 
+          ? '<button class="btn-card-disabled" disabled>เต็นท์เต็มแล้วในรอบนี้</button>' 
+          : '<a href="https://nps.dnp.go.th/reservation.php?option=area" target="_blank" class="btn-card-book">จองที่พักออนไลน์ (เว็บ DNP) ➔</a>'}
+      </div>
+    </div>
+  `;
+}
+
+// Elements for View Switching
+const btnViewCard = document.getElementById('btnViewCard');
+const btnViewTable = document.getElementById('btnViewTable');
+const cardsWrapper = document.getElementById('cardsWrapper');
+const resultsCountBadge = document.getElementById('resultsCountBadge');
+
+function setViewMode(mode) {
+  if (mode === 'card') {
+    document.body.classList.add('view-mode-card');
+    document.body.classList.remove('view-mode-table');
+    if (btnViewCard) btnViewCard.classList.add('active');
+    if (btnViewTable) btnViewTable.classList.remove('active');
+  } else {
+    document.body.classList.add('view-mode-table');
+    document.body.classList.remove('view-mode-card');
+    if (btnViewTable) btnViewTable.classList.add('active');
+    if (btnViewCard) btnViewCard.classList.remove('active');
+  }
+}
+
+if (btnViewCard) btnViewCard.addEventListener('click', () => setViewMode('card'));
+if (btnViewTable) btnViewTable.addEventListener('click', () => setViewMode('table'));
+
+// Default initial view mode based on screen width
+if (window.innerWidth <= 768) {
+  setViewMode('card');
+} else {
+  setViewMode('table');
 }
 
 // Main Render Logic
@@ -245,7 +347,9 @@ function renderSinglePark(data, filters) {
   const zone = data.zones && data.zones[0];
   if (!zone) {
     tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px;">ไม่มีข้อมูลพื้นที่กางเต็นท์ในอุทยานนี้</td></tr>`;
+    if (cardsWrapper) cardsWrapper.innerHTML = `<div style="text-align: center; padding: 20px; color: #64748b;">ไม่มีข้อมูลพื้นที่กางเต็นท์ในอุทยานนี้</div>`;
     summaryText.textContent = 'ไม่มีข้อมูล';
+    if (resultsCountBadge) resultsCountBadge.innerHTML = 'พบ <b>0</b> รายการ';
     return;
   }
 
@@ -276,6 +380,7 @@ function renderSinglePark(data, filters) {
 
   countAll.textContent = allDays.length;
   countAvailable.textContent = zone.totalAvailableDays;
+  if (resultsCountBadge) resultsCountBadge.innerHTML = `พบ <b>${filtered.length}</b> รายการ`;
 
   // Summary Text
   let rangeDesc = '';
@@ -299,7 +404,11 @@ function renderSinglePark(data, filters) {
 
   if (filtered.length === 0) {
     tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 30px; color: #666;">ไม่พบวันที่ตรงตามเงื่อนไข (ลองเปลี่ยนช่วงวัน หรือลดจำนวนคืนที่พัก)</td></tr>`;
+    if (cardsWrapper) {
+      cardsWrapper.innerHTML = `<div style="text-align: center; padding: 35px 15px; color: #64748b; background: #fff; border-radius: 8px; border: 1px dashed #cbd5e1;">ไม่พบวันที่ตรงตามเงื่อนไข (ลองเปลี่ยนช่วงวัน หรือลดจำนวนคืนที่พัก)</div>`;
+    }
   } else {
+    // Render Table Body
     tableBody.innerHTML = filtered.map(({ day: d, idx }) => {
       const rowClass = d.isFull ? 'row-full' : 'row-available';
       const weekendClass = d.isWeekend ? 'row-weekend' : '';
@@ -322,6 +431,14 @@ function renderSinglePark(data, filters) {
         </tr>
       `;
     }).join('');
+
+    // Render Cards
+    if (cardsWrapper) {
+      cardsWrapper.innerHTML = filtered.map(({ day: d, idx }) => {
+        const formatted = formatRowDetails(d, allDays, idx, nights, data.monthName, data.buddhistYear);
+        return renderCardHtml(parkName, zone.zoneName, d, formatted);
+      }).join('');
+    }
   }
 
   renderDnpStrip(zone);
@@ -370,6 +487,7 @@ function renderMultiParks(parks, filters) {
 
   countAll.textContent = rows.length;
   countAvailable.textContent = totalAvailableSlots;
+  if (resultsCountBadge) resultsCountBadge.innerHTML = `พบ <b>${rows.length}</b> รายการ`;
 
   summaryText.innerHTML = `
     ⭐ <b>ค้นหาทุกอุทยานแห่งชาติ</b> (พบพื้นที่กางเต็นท์ใน ${parks.length} อุทยาน) | 
@@ -380,9 +498,13 @@ function renderMultiParks(parks, filters) {
 
   if (rows.length === 0) {
     tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 30px; color: #666;">ไม่พบอุทยานที่ว่างตามเงื่อนไขที่เลือก (ลองเปลี่ยนช่วงวัน หรือลดจำนวนคืนที่พัก)</td></tr>`;
+    if (cardsWrapper) {
+      cardsWrapper.innerHTML = `<div style="text-align: center; padding: 35px 15px; color: #64748b; background: #fff; border-radius: 8px; border: 1px dashed #cbd5e1;">ไม่พบอุทยานที่ว่างตามเงื่อนไขที่เลือก (ลองเปลี่ยนช่วงวัน หรือลดจำนวนคืนที่พัก)</div>`;
+    }
     return;
   }
 
+  // Render Table Body
   tableBody.innerHTML = rows.map(r => {
     const d = r.day;
     const rowClass = d.isFull ? 'row-full' : 'row-available';
@@ -406,6 +528,15 @@ function renderMultiParks(parks, filters) {
       </tr>
     `;
   }).join('');
+
+  // Render Cards
+  if (cardsWrapper) {
+    cardsWrapper.innerHTML = rows.map(r => {
+      const d = r.day;
+      const formatted = formatRowDetails(d, r.allDays, r.idx, nights, (rawData && rawData.monthName) || 'ต.ค.', (rawData && rawData.buddhistYear) || '2569');
+      return renderCardHtml(r.parkName, r.zoneName, d, formatted);
+    }).join('');
+  }
 }
 
 // Render DNP Strip Table
