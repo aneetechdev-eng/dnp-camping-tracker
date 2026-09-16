@@ -1,12 +1,14 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 const dnpService = require('./dnpService');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const SYNC_TARGET_URL = process.env.SYNC_TARGET_URL || null;
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Load parks list
@@ -19,7 +21,7 @@ try {
   parksList = [{ code: '84', name: 'อช.ภูสอยดาว' }];
 }
 
-// Global state for polling and watch target
+// Global state for polling, sync, and watch target
 const state = {
   activeWatch: {
     branch: '84',
@@ -46,7 +48,7 @@ async function runPoll() {
   try {
     const freshData = await dnpService.fetchCalendarHold(branch, month, year);
     
-    // Check diff for newly freed slots
+    // Check diff for newly freed spots
     if (state.latestData) {
       const diff = dnpService.checkDiff(state.latestData, freshData);
       if (diff.hasChanges) {
@@ -66,10 +68,33 @@ async function runPoll() {
     state.latestData = freshData;
     state.lastPollTime = Date.now();
     state.nextPollSeconds = 60;
+
+    // If SYNC_TARGET_URL is configured (e.g. on NAS), forward data to Render.com!
+    if (SYNC_TARGET_URL) {
+      pushSyncToRemote(freshData);
+    }
   } catch (err) {
     console.error(`[POLLER] ❌ Error during poll:`, err.message);
   } finally {
     state.isPolling = false;
+  }
+}
+
+// Helper: Push data to Render.com
+async function pushSyncToRemote(data) {
+  if (!SYNC_TARGET_URL) return;
+  const target = SYNC_TARGET_URL.replace(/\/+$/, '');
+  try {
+    await axios.post(`${target}/api/sync`, {
+      branch: state.activeWatch.branch,
+      month: state.activeWatch.month,
+      year: state.activeWatch.year,
+      data,
+      recentAlerts: state.recentAlerts
+    }, { timeout: 15000 });
+    console.log(`[SYNC] 🚀 Successfully pushed data to ${target}/api/sync`);
+  } catch (err) {
+    console.error(`[SYNC] ❌ Failed to push data to ${target}:`, err.message);
   }
 }
 
@@ -84,24 +109,47 @@ setInterval(() => {
   }
 }, 1000);
 
+// API: Ingest / Sync data from NAS (Used on Render)
+app.post('/api/sync', (req, res) => {
+  const { branch, month, year, data, recentAlerts } = req.body;
+  if (!data) {
+    return res.status(400).json({ success: false, error: 'No data payload' });
+  }
+
+  state.activeWatch = {
+    branch: String(branch || data.branch || '84'),
+    month: String(month || data.month || '10').padStart(2, '0'),
+    year: String(year || data.year || '2026')
+  };
+  state.latestData = data;
+  state.lastPollTime = Date.now();
+  state.nextPollSeconds = 60;
+  if (Array.isArray(recentAlerts)) {
+    state.recentAlerts = recentAlerts;
+  }
+
+  console.log(`[SYNC] 📥 Received sync from NAS at ${new Date().toLocaleTimeString('th-TH')} for Branch ${state.activeWatch.branch}`);
+  res.json({ success: true, timestamp: Date.now() });
+});
+
 // API: Get Parks List
 app.get('/api/parks', (req, res) => {
   res.json({ success: true, parks: parksList });
 });
 
-// API: Get Live / Filtered Availability on-demand
+// API: Get Availability (with cache and graceful fallback for foreign hosts)
 app.get('/api/availability', async (req, res) => {
   const branch = req.query.branch || state.activeWatch.branch;
   const month = req.query.month || state.activeWatch.month;
   const year = req.query.year || state.activeWatch.year;
 
-  // If matches currently watched target and is fresh (< 30s old), return cached
+  // If matches current watch target and we have fresh data, return it
   if (
     state.latestData &&
     state.activeWatch.branch === String(branch) &&
     state.activeWatch.month === String(month).padStart(2, '0') &&
     state.activeWatch.year === String(year) &&
-    Date.now() - (state.lastPollTime || 0) < 30000
+    Date.now() - (state.lastPollTime || 0) < 45000
   ) {
     return res.json({
       ...state.latestData,
@@ -110,9 +158,9 @@ app.get('/api/availability', async (req, res) => {
     });
   }
 
+  // Attempt live fetch from DNP (runs fast in Thailand)
   try {
     const data = await dnpService.fetchCalendarHold(branch, month, year);
-    // If user queried the current active watch, update state
     if (
       state.activeWatch.branch === String(branch) &&
       state.activeWatch.month === String(month).padStart(2, '0') &&
@@ -121,10 +169,24 @@ app.get('/api/availability', async (req, res) => {
       state.latestData = data;
       state.lastPollTime = Date.now();
       state.nextPollSeconds = 60;
+      if (SYNC_TARGET_URL) pushSyncToRemote(data);
     }
     res.json({ ...data, fromCache: false, nextPollSeconds: state.nextPollSeconds });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    // If live fetch fails (e.g. Render geo-blocked by DNP), fallback to latest synced data
+    if (state.latestData) {
+      console.warn(`[API] Live fetch error (${err.message}), serving latest synced data from NAS`);
+      return res.json({
+        ...state.latestData,
+        fromCache: true,
+        fallbackNote: 'ข้อมูลล่าสุดจากการ Sync ผ่าน NAS',
+        nextPollSeconds: state.nextPollSeconds
+      });
+    }
+    res.status(500).json({
+      success: false,
+      error: `ไม่สามารถเชื่อมต่อ DNP ได้ (${err.message}) และยังไม่มีข้อมูลที่ Sync จาก NAS`
+    });
   }
 });
 
@@ -136,7 +198,8 @@ app.get('/api/poll', (req, res) => {
     lastPollTime: state.lastPollTime,
     nextPollSeconds: state.nextPollSeconds,
     latestData: state.latestData,
-    recentAlerts: state.recentAlerts
+    recentAlerts: state.recentAlerts,
+    isSyncSender: !!SYNC_TARGET_URL
   });
 });
 
@@ -152,10 +215,8 @@ app.post('/api/watch', async (req, res) => {
     month: String(month).padStart(2, '0'),
     year: String(year)
   };
-  state.latestData = null;
-  state.recentAlerts = [];
 
-  // Run poll immediately for new target
+  // Trigger poll immediately for new target
   await runPoll();
 
   res.json({
@@ -175,20 +236,17 @@ app.post('/api/refresh', async (req, res) => {
   });
 });
 
-// API: Clear alert history
-app.post('/api/alerts/clear', (req, res) => {
-  state.recentAlerts = [];
-  res.json({ success: true });
-});
-
-// Start Server and trigger initial poll
+// Start Server
 app.listen(PORT, async () => {
   console.log(`=======================================================`);
-  console.log(`🌲 DNP Camping Tracker Server is running!`);
-  console.log(`🌐 Local Web Dashboard: http://localhost:${PORT}`);
-  console.log(`⏰ Polling interval: every 1 minute (60 seconds)`);
+  console.log(`🌲 DNP Camping Tracker Server is running on port ${PORT}!`);
+  if (SYNC_TARGET_URL) {
+    console.log(`📡 Sync Target Mode: Forwarding data to ${SYNC_TARGET_URL}`);
+  }
   console.log(`=======================================================`);
   
-  // Initial poll on startup
-  runPoll();
+  // Initial poll on startup (if not already synced)
+  if (!state.latestData) {
+    runPoll();
+  }
 });

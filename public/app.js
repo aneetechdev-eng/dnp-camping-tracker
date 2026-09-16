@@ -49,7 +49,9 @@ async function fetchData() {
   const month = monthSelect.value;
   const year = yearSelect.value;
 
-  tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px;">กำลังดึงข้อมูลล่าสุดจาก DNP...</td></tr>`;
+  if (!rawData) {
+    tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px;">กำลังโหลดข้อมูลล่าสุด...</td></tr>`;
+  }
 
   try {
     const res = await fetch(`/api/availability?branch=${branch}&month=${month}&year=${year}`);
@@ -61,10 +63,20 @@ async function fetchData() {
       countdown = data.nextPollSeconds || 60;
       render();
     } else {
-      tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red; padding: 20px;">${data.error || 'ไม่พบข้อมูลพื้นที่กางเต็นท์'}</td></tr>`;
+      // If error, check if poll has data
+      const pollRes = await fetch('/api/poll');
+      const pollData = await pollRes.json();
+      if (pollData.latestData && pollData.latestData.zones) {
+        rawData = pollData.latestData;
+        lastUpdateTime.textContent = rawData.updatedAtText || new Date().toLocaleTimeString('th-TH');
+        countdown = pollData.nextPollSeconds || 60;
+        render();
+      } else {
+        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #b91c1c; padding: 20px;">${data.error || 'กำลังรอข้อมูล Sync รอบแรกจากเซิร์ฟเวอร์ NAS... (กดรีเฟรชอีกครั้งใน 10 วินาที)'}</td></tr>`;
+      }
     }
   } catch (err) {
-    tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red; padding: 20px;">เกิดข้อผิดพลาดในการเชื่อมต่อ: ${err.message}</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #b91c1c; padding: 20px;">เกิดข้อผิดพลาดในการเชื่อมต่อ: ${err.message}</td></tr>`;
   }
 }
 
