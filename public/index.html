@@ -141,16 +141,24 @@
       <span id="summaryText">กำลังโหลดข้อมูล...</span>
     </div>
 
-    <!-- Results Header: Count + View Switcher -->
+    <!-- Results Header: Count + View Switcher + LINE Export Button -->
     <div class="results-header">
       <div class="results-count" id="resultsCountBadge">
         พบ <b>0</b> รายการ
       </div>
-      <div class="view-switcher">
-        <button type="button" id="btnViewCard" class="btn-toggle active" title="มุมมองการ์ด (เหมาะสำหรับมือถือ)">📱 การ์ด</button>
-        <button type="button" id="btnViewTable" class="btn-toggle" title="มุมมองตาราง">📊 ตาราง</button>
+      <div class="header-actions">
+        <button type="button" id="btnShareAllLine" class="btn-share-line" title="ส่งข้อความสรุปรายการวันว่างทั้งหมดเข้ากลุ่ม LINE">
+          <span class="icon-line">💬</span> ส่งสรุปเข้า LINE
+        </button>
+        <div class="view-switcher">
+          <button type="button" id="btnViewCard" class="btn-toggle active" title="มุมมองการ์ด (เหมาะสำหรับมือถือ)">📱 การ์ด</button>
+          <button type="button" id="btnViewTable" class="btn-toggle" title="มุมมองตาราง">📊 ตาราง</button>
+        </div>
       </div>
     </div>
+
+    <!-- Toast Notification -->
+    <div id="toastNotification" class="toast-notification"></div>
 
     <!-- Mobile Cards View -->
     <div id="cardsWrapper" class="cards-wrapper">

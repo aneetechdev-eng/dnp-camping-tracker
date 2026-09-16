@@ -224,7 +224,7 @@ function formatRowDetails(d, allDays, idx, nights, monthName, buddhistYear) {
 }
 
 // Render Card HTML for Mobile
-function renderCardHtml(parkName, zoneName, d, formatted) {
+function renderCardHtml(parkName, zoneName, d, formatted, index) {
   const isFull = d.isFull;
   const isWeekend = d.isWeekend;
   const cardClass = isFull ? 'card-full' : 'card-available';
@@ -267,17 +267,140 @@ function renderCardHtml(parkName, zoneName, d, formatted) {
       <div class="card-action-bar">
         ${isFull 
           ? '<button class="btn-card-disabled" disabled>เต็นท์เต็มแล้วในรอบนี้</button>' 
-          : '<a href="https://nps.dnp.go.th/reservation.php?option=area" target="_blank" class="btn-card-book">จองที่พักออนไลน์ (เว็บ DNP) ➔</a>'}
+          : `
+            <a href="https://nps.dnp.go.th/reservation.php?option=area" target="_blank" class="btn-card-book">จอง DNP ➔</a>
+            <button type="button" class="btn-card-line" onclick="shareStayByIndex(${index})">
+              <span>💬</span> ส่งเข้า LINE
+            </button>
+          `}
       </div>
     </div>
   `;
 }
 
-// Elements for View Switching
+// Elements for View Switching & LINE Share
 const btnViewCard = document.getElementById('btnViewCard');
 const btnViewTable = document.getElementById('btnViewTable');
 const cardsWrapper = document.getElementById('cardsWrapper');
 const resultsCountBadge = document.getElementById('resultsCountBadge');
+const btnShareAllLine = document.getElementById('btnShareAllLine');
+const toastNotification = document.getElementById('toastNotification');
+
+let currentFilteredResults = [];
+let toastTimer = null;
+
+function showToast(msg) {
+  if (!toastNotification) return;
+  toastNotification.textContent = msg;
+  toastNotification.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastNotification.classList.remove('show');
+  }, 3500);
+}
+
+function sendToLine(text) {
+  // 1. Copy to clipboard
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('📋 คัดลอกข้อความสรุปแล้ว และกำลังเปิด LINE...');
+    }).catch(() => {
+      showToast('กำลังเปิด LINE...');
+    });
+  } else {
+    showToast('กำลังเปิด LINE...');
+  }
+
+  // 2. Open LINE Social Share URL
+  const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(text)}`;
+  const win = window.open(lineUrl, '_blank');
+  if (!win) {
+    window.location.href = lineUrl;
+  }
+}
+
+function shareStayByIndex(idx) {
+  const item = currentFilteredResults[idx];
+  if (!item) return;
+
+  const park = item.parkName;
+  const zone = item.zoneName;
+  const nights = item.nights;
+  const d = item.day;
+  const mName = item.monthName || 'ต.ค.';
+  const bYear = item.buddhistYear || '2569';
+
+  let msg = '';
+  if (nights > 1) {
+    const checkoutDayObj = item.allDays[item.dayIdx + nights];
+    const checkoutDayNum = checkoutDayObj ? checkoutDayObj.day : (d.day + nights);
+    const checkoutDayName = checkoutDayObj ? `วัน${checkoutDayObj.dayName}` : '';
+    const stayDays = item.allDays.slice(item.dayIdx, item.dayIdx + nights);
+    const minAvailable = Math.min(...stayDays.map(s => s.available));
+
+    const breakdownText = stayDays.map((st, i) => `• คืน ${i + 1} (${st.day} ${mName}): ว่าง ${st.available} ที่`).join('\n');
+
+    msg = `🏕️ กางเต็นท์: ${park} (${zone})
+📅 เข้า: ${d.day} ➔ ออก: ${checkoutDayNum} ${mName} ${bYear} (พัก ${nights} คืน)
+👥 ว่างขั้นต่ำ: ${minAvailable} ที่
+${breakdownText}
+🔗 จองออนไลน์ DNP: https://nps.dnp.go.th/reservation.php?option=area`;
+  } else {
+    msg = `🏕️ กางเต็นท์: ${park} (${zone})
+📅 วัน${d.dayName}ที่ ${d.thaiDate} (พัก 1 คืน)
+👥 ว่าง: ${d.available} ที่ (จองแล้ว ${d.booked}/${d.capacity} คน)
+🔗 จองออนไลน์ DNP: https://nps.dnp.go.th/reservation.php?option=area`;
+  }
+
+  sendToLine(msg);
+}
+
+function shareAllToLine() {
+  if (!currentFilteredResults || currentFilteredResults.length === 0) {
+    alert('ไม่พบรายการที่ว่างในขณะนี้');
+    return;
+  }
+
+  const isMulti = rawData && (rawData.isMulti || Array.isArray(rawData.parks));
+  const parkTitle = isMulti
+    ? 'อุทยานแห่งชาติทั้งหมด'
+    : (rawData && rawData.parkName ? rawData.parkName : (parkSelect.options[parkSelect.selectedIndex] ? parkSelect.options[parkSelect.selectedIndex].text : 'อุทยานแห่งชาติ'));
+
+  const mName = (rawData && rawData.monthName) || 'ตุลาคม';
+  const bYear = (rawData && rawData.buddhistYear) || '2569';
+  const nights = parseInt(nightsSelect.value, 10) || 1;
+
+  let msg = `🏕️ สรุปวันว่างพื้นที่กางเต็นท์: ${parkTitle}\n`;
+  msg += `📅 เดือน ${mName} ${bYear} ${nights > 1 ? `(พักต่อเนื่อง ${nights} คืน)` : ''}\n\n`;
+  msg += `✅ วันที่ว่าง (${currentFilteredResults.length} รายการ):\n`;
+
+  const displayList = currentFilteredResults.slice(0, 15);
+  displayList.forEach(item => {
+    const d = item.day;
+    const parkPrefix = item.isMulti ? `${item.parkName}: ` : '';
+    if (nights > 1) {
+      const checkoutDayObj = item.allDays[item.dayIdx + nights];
+      const checkoutDayNum = checkoutDayObj ? checkoutDayObj.day : (d.day + nights);
+      const stayDays = item.allDays.slice(item.dayIdx, item.dayIdx + nights);
+      const minAvailable = Math.min(...stayDays.map(s => s.available));
+      msg += `• ${parkPrefix}เข้า ${d.day} ➔ ออก ${checkoutDayNum} ${mName}: ว่าง ${minAvailable} ที่\n`;
+    } else {
+      msg += `• ${parkPrefix}${d.day} ${mName} (วัน${d.dayName}): ว่าง ${d.available} ที่\n`;
+    }
+  });
+
+  if (currentFilteredResults.length > 15) {
+    msg += `... และมีอีก ${currentFilteredResults.length - 15} รายการ\n`;
+  }
+
+  msg += `\n🔗 เว็บจอง DNP: https://nps.dnp.go.th/reservation.php?option=area`;
+
+  sendToLine(msg);
+}
+
+if (btnShareAllLine) {
+  btnShareAllLine.addEventListener('click', shareAllToLine);
+}
 
 function setViewMode(mode) {
   if (mode === 'card') {
@@ -350,6 +473,7 @@ function renderSinglePark(data, filters) {
     if (cardsWrapper) cardsWrapper.innerHTML = `<div style="text-align: center; padding: 20px; color: #64748b;">ไม่มีข้อมูลพื้นที่กางเต็นท์ในอุทยานนี้</div>`;
     summaryText.textContent = 'ไม่มีข้อมูล';
     if (resultsCountBadge) resultsCountBadge.innerHTML = 'พบ <b>0</b> รายการ';
+    currentFilteredResults = [];
     return;
   }
 
@@ -382,6 +506,20 @@ function renderSinglePark(data, filters) {
   countAvailable.textContent = zone.totalAvailableDays;
   if (resultsCountBadge) resultsCountBadge.innerHTML = `พบ <b>${filtered.length}</b> รายการ`;
 
+  // Save for LINE sharing
+  currentFilteredResults = filtered.map(({ day: d, idx }) => ({
+    parkName,
+    zoneName: zone.zoneName,
+    capacity: zone.capacity,
+    day: d,
+    allDays,
+    dayIdx: idx,
+    nights,
+    monthName: data.monthName,
+    buddhistYear: data.buddhistYear,
+    isMulti: false
+  }));
+
   // Summary Text
   let rangeDesc = '';
   if (fromDay && toDay) {
@@ -409,7 +547,7 @@ function renderSinglePark(data, filters) {
     }
   } else {
     // Render Table Body
-    tableBody.innerHTML = filtered.map(({ day: d, idx }) => {
+    tableBody.innerHTML = filtered.map(({ day: d, idx }, index) => {
       const rowClass = d.isFull ? 'row-full' : 'row-available';
       const weekendClass = d.isWeekend ? 'row-weekend' : '';
       const formatted = formatRowDetails(d, allDays, idx, nights, data.monthName, data.buddhistYear);
@@ -426,7 +564,12 @@ function renderSinglePark(data, filters) {
           <td>
             ${d.isFull 
               ? '<span style="color:#aaa; font-size: 0.8rem;">-</span>' 
-              : '<a href="https://nps.dnp.go.th/reservation.php?option=area" target="_blank" class="btn-book">จอง ➔</a>'}
+              : `
+                <div style="display: flex; gap: 4px; align-items: center;">
+                  <a href="https://nps.dnp.go.th/reservation.php?option=area" target="_blank" class="btn-book">จอง ➔</a>
+                  <button type="button" class="btn-table-line" onclick="shareStayByIndex(${index})" title="ส่งข้อมูลวันนี้เข้ากลุ่ม LINE">💬</button>
+                </div>
+              `}
           </td>
         </tr>
       `;
@@ -434,9 +577,9 @@ function renderSinglePark(data, filters) {
 
     // Render Cards
     if (cardsWrapper) {
-      cardsWrapper.innerHTML = filtered.map(({ day: d, idx }) => {
+      cardsWrapper.innerHTML = filtered.map(({ day: d, idx }, index) => {
         const formatted = formatRowDetails(d, allDays, idx, nights, data.monthName, data.buddhistYear);
-        return renderCardHtml(parkName, zone.zoneName, d, formatted);
+        return renderCardHtml(parkName, zone.zoneName, d, formatted, index);
       }).join('');
     }
   }
@@ -489,6 +632,20 @@ function renderMultiParks(parks, filters) {
   countAvailable.textContent = totalAvailableSlots;
   if (resultsCountBadge) resultsCountBadge.innerHTML = `พบ <b>${rows.length}</b> รายการ`;
 
+  // Save for LINE sharing
+  currentFilteredResults = rows.map(r => ({
+    parkName: r.parkName,
+    zoneName: r.zoneName,
+    capacity: r.capacity,
+    day: r.day,
+    allDays: r.allDays,
+    dayIdx: r.idx,
+    nights,
+    monthName: (rawData && rawData.monthName) || 'ต.ค.',
+    buddhistYear: (rawData && rawData.buddhistYear) || '2569',
+    isMulti: true
+  }));
+
   summaryText.innerHTML = `
     ⭐ <b>ค้นหาทุกอุทยานแห่งชาติ</b> (พบพื้นที่กางเต็นท์ใน ${parks.length} อุทยาน) | 
     ผลการค้นหาตามเงื่อนไข: <b style="color: #059669;">${rows.length} รายการ</b> 
@@ -505,7 +662,7 @@ function renderMultiParks(parks, filters) {
   }
 
   // Render Table Body
-  tableBody.innerHTML = rows.map(r => {
+  tableBody.innerHTML = rows.map((r, index) => {
     const d = r.day;
     const rowClass = d.isFull ? 'row-full' : 'row-available';
     const weekendClass = d.isWeekend ? 'row-weekend' : '';
@@ -523,7 +680,12 @@ function renderMultiParks(parks, filters) {
         <td>
           ${d.isFull 
             ? '<span style="color:#aaa; font-size: 0.8rem;">-</span>' 
-            : '<a href="https://nps.dnp.go.th/reservation.php?option=area" target="_blank" class="btn-book">จอง ➔</a>'}
+            : `
+              <div style="display: flex; gap: 4px; align-items: center;">
+                <a href="https://nps.dnp.go.th/reservation.php?option=area" target="_blank" class="btn-book">จอง ➔</a>
+                <button type="button" class="btn-table-line" onclick="shareStayByIndex(${index})" title="ส่งข้อมูลวันนี้เข้ากลุ่ม LINE">💬</button>
+              </div>
+            `}
         </td>
       </tr>
     `;
@@ -531,10 +693,10 @@ function renderMultiParks(parks, filters) {
 
   // Render Cards
   if (cardsWrapper) {
-    cardsWrapper.innerHTML = rows.map(r => {
+    cardsWrapper.innerHTML = rows.map((r, index) => {
       const d = r.day;
       const formatted = formatRowDetails(d, r.allDays, r.idx, nights, (rawData && rawData.monthName) || 'ต.ค.', (rawData && rawData.buddhistYear) || '2569');
-      return renderCardHtml(r.parkName, r.zoneName, d, formatted);
+      return renderCardHtml(r.parkName, r.zoneName, d, formatted, index);
     }).join('');
   }
 }
